@@ -1,0 +1,12 @@
+Build.PL
+Changes
+MANIFEST
+Makefile.PL
+README
+lib/Unix/Lsof.pm
+lib/Unix/Lsof/Result.pm
+t/10.procedural.t
+t/20.lsof-result.t
+t/pod-coverage.t
+t/pod.t
+META.yml                                 Module meta-data (added by MakeMaker)
