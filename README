@@ -1,4 +1,4 @@
-Unix-Lsof version 0.0.1
+Unix-Lsof version 0.0.2
 
 This module is a wrapper around the UNIX utility lsof, lsof needs to be
 installed for this module to work. For further documentation please see the

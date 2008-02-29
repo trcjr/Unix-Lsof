@@ -1,7 +1,7 @@
 package Unix::Lsof::Result;
 
 use 5.008;
-use version; our $VERSION = qv('0.0.1');
+use version; our $VERSION = qv('0.0.2');
 
 use warnings;
 use strict;
@@ -103,6 +103,8 @@ sub get_hashof_rows {
 
     my $full_key = $Unix::Lsof::op_field{$key} || $key;
 
+    $full_key =~ s/_/ /g;
+
     $self->_setup_fields();
     $self->_setup_filter();
 
@@ -124,8 +126,11 @@ sub get_hashof_rows {
                 }
                 $i++;
             }
+            my $ukey = join $;, sort values %rline;
+            next LINELOOP if !defined $ukey;
+            
             push @{ $ret{$hkey} }, \%rline
-                if ( !$uniqify{$hkey}{ join $;, sort values %rline }++ );
+                if ( !$uniqify{$hkey}{ $ukey }++ );
         }
     }
     delete $self->{_query};
@@ -166,7 +171,8 @@ sub _setup_filter {
     return if ( !exists $self->{_query}{filter} );
 
     %{ $self->{_query}{filter} } =
-        map { $Unix::Lsof::op_field{$_} || $_ => $self->{_query}{filter}{$_} }
+        map { my $t = $_; $t =~ s/_/ /g;
+              $Unix::Lsof::op_field{$t} || $t => $self->{_query}{filter}{$_} }
             keys %{ $self->{_query}{filter} };
 
     my %check_filter = map { $_ => 1 } @{ $self->{_query}{ret_fields} };
@@ -180,13 +186,13 @@ sub _setup_fields {
 
     # Use either field designators or names
     @ret_fields =
-        map { $Unix::Lsof::op_field{$_} || $_ }
+        map { $_ =~ s/_/ /g; $Unix::Lsof::op_field{$_} || $_ }
             @{ $self->{_query}{inp_fields} };
 
     for my $f (@ret_fields) {
-        if ( exists $self->{_program_field_ids}{$f} ) {
-            push @temp_fields, $f;
-        } elsif ( exists $self->{_file_field_ids}{$f} || $f eq "process id" ) {
+        if ( exists $self->{_program_field_ids}{$f} ||
+             exists $self->{_file_field_ids}{$f} 
+        ) {
             push @temp_fields, $f;
         } else {
             warn "$f is not in the list of fields returned by lsof";
@@ -198,6 +204,7 @@ sub _setup_fields {
 
 sub _validate {
     my ( $self, $filter_key, $value ) = @_;
+
     my $filter = $self->{_query}{filter}{$filter_key};
 
     return if !defined $value;
@@ -254,8 +261,9 @@ sub _get_field_ids {
         for my $pfield ( keys %{ $self->{output}{$pid} } ) {
             if ( $pfield eq "files" ) {
                 for my $file ( @{ ${ $self->{output} }{$pid}{files} } ) {
-                    ++$_
-                        for @{ %{ $self->{_file_field_ids} } }{ keys %$file };
+                    for my $id ( keys %$file ) {
+                        $self->{_file_field_ids}{$id}++;
+                    }
                 }
             } else {
                 $self->{_program_field_ids}{$pfield}++;
@@ -272,7 +280,7 @@ Unix::Lsof::Result - Perlish interface to lsof output
 
 =head1 VERSION
 
-This document describes Unix::Lsof::Result version 0.0.1
+This document describes Unix::Lsof::Result version 0.0.2
 
 
 =head1 SYNOPSIS
@@ -337,10 +345,10 @@ This module offers multiple ways of organising and retrieving the data returned
 by lsof. It attempts to make it as easy as possible for the user to obtain the
 information he wants in the way he wants it.
 
-The C<Unix::Lsof::Result> object is returned when calling C<Unix::Lsof->lsof()>
+The C<Unix::Lsof::Result> object is returned when calling C<<Unix::Lsof->lsof()>>
 in scalar context. When evaluated in boolean context the object will evaluate to
-true unless no STDOUT output is obtained from running the C<lsof> binary AND 
-STDERR output was obtained from the same run. This allows for the following
+true unless no STDOUT output is obtained from running the C<lsof> binary <b>and
+</b> STDERR output was obtained from the same run. This allows for the following
 logic :
 
     if ($lf = $lsof(@params)) {
@@ -368,7 +376,7 @@ example C<get_values>, C<get_arrayof_rows>) have the following properties:
 
 Only return unique values
 
-Also, all output accessor methods will only return unique result sets, e.g. if
+All output accessor methods will only return unique result sets, e.g. if
 a single file is opened by multiple programs
 
    $lf->get_arrayof_rows( "file name", "process id");
@@ -397,10 +405,11 @@ either a list or a reference to an array/hash.
 
 Fields can be specified either with their full name or single character
 
-When specifying a list of fileds which you want returned from the accessor, you
+When specifying a list of fields which you want returned from the accessor, you
 can either use the single character associated with that field (see the lsof man
 page section "OUTPUT FOR OTHER PROGRAMS" for a list of these) or the full field
-name as given in ther C<Unix::Lsof> perldoc.
+name as given in ther C<Unix::Lsof> perldoc, or the full field name with spaces
+replaced by underscores (e.g. file_name instead of "file name").
 
 =item *
 
@@ -426,7 +435,7 @@ Example:
     {
         "process id"   => 4242,
         "n"            => qr/\.txt\z/i,
-        "command name" => sub { $_[0] =~ m/kde/ || $_[0] eq "cupsd" }
+        "command_name" => sub { $_[0] =~ m/kde/ || $_[0] eq "cupsd" }
     }
 
 Limitations: is is very well possible to specify a filter that completely excludes
@@ -495,7 +504,7 @@ Specialised version of get_values which returns a list of file names.
 
 Returns a list of array references, each of which corresponds to a row of lsof
 output. The order of the values in the referenced arrays corresponds to the
-order of the parameters passed in, e.g. a call to
+order of the parameters passed in; e.g. a call to
 
     $lf->get_arrayof_rows( "file name", "file type");
 
@@ -547,12 +556,12 @@ The hash keys returned are exactly of the same format as passed in via the
 parameters, so passing in a single character will B<not> create a full field
 name key. E.g.
 
-    $lf->get_hashof_columns( "file name", "t");
+    $lf->get_hashof_columns( "file_name", "t");
 
 will produce this
 
     {
-        "file name" => [ filename1, filename2 ],
+        "file_name" => [ filename1, filename2 ],
         "t"         => [ filetype1, filetype2 ]
     }
 
@@ -564,7 +573,7 @@ will produce this
 Returns a hash reference (or a list which can be assigned to a hash). The hash
 keys are the value of the field which is given as the first parameter. The hash
 values are references to arrays, each of which contain a row of the requested
-fields in a hash  e.g. a call to
+fields in a hash; e.g. a call to
 
     $lf->get_hashof_rows( "process id", "file name", "t" );
 
@@ -620,7 +629,7 @@ Unix::Lsof::Result requires no configuration files or environment variables.
 
 =head1 DEPENDENCIES
 
-Unix::Lsof requires the following modules:
+Unix::Lsof::Result requires the following modules:
 
 =over
 
@@ -653,7 +662,7 @@ As always, patches are more than welcome.
 
 =head1 ACKNOWLEDGEMENTS
 
-A very heartfelt thanks to Vic Abel for writing C<lsof>, it has been invaluable
+A very heartfelt thanks to Vic Abell for writing C<lsof>, it has been invaluable
 to me over the years. Many thanks as always to http://www.perlmonks.org, the
 monks continue to amaze and enlighten me. A very special thanks to Damian
 Conway, who (amongst other things) recommends writing module documentation
@@ -669,7 +678,7 @@ Marc Beyer  C<< <japh@tirwhan.org> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright (c) 2007, Marc Beyer C<< <japh@tirwhan.org> >>. All rights reserved.
+Copyright (c) 2008, Marc Beyer C<< <japh@tirwhan.org> >>. All rights reserved.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself. See L<perlartistic>.

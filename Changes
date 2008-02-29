@@ -1,5 +1,9 @@
 Revision history for Unix-Lsof
 
+0.0.2   Sat 01 31 00:31:00 2008
+        - Made to work with 5.10
+        - Optionally use field names with underscore instead of space
+
 0.0.1  Sun 02 24 10:21:53 2008
-       Initial release.
+       - Initial release.
 

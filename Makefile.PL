@@ -1,6 +1,11 @@
 use strict;
 use warnings;
+use 5.008;
 use ExtUtils::MakeMaker;
+
+if ($^O =~ m/^(?:mswin32|dos|macos|os2|cygwin|v[mo]s|riscos|amigaos|beos|mpeix)$/) {
+    die "NA: OS unsupported , lsof is not available for OS $^O, no point installing this module\n";
+}
 
 WriteMakefile(
     NAME                => 'Unix::Lsof',

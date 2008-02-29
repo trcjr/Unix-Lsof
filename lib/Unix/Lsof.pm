@@ -1,7 +1,7 @@
 package Unix::Lsof;
 
 use 5.008;
-use version; our $VERSION = qv('0.0.1');
+use version; our $VERSION = qv('0.0.2');
 
 use warnings;
 use strict;
@@ -50,7 +50,9 @@ sub lsof {
     my ( @params, $lsof_bin );
 
     if ( ref $arg[0] eq "HASH" ) {
-        $lsof_bin = $arg[0]->{binary} || _find_binary();
+        $lsof_bin = $arg[0]->{binary} ||
+            _find_binary() ||
+                die "Cannot find lsof program";
         @params = _construct_parameters( $arg[0] );
     } else {
         $lsof_bin = _find_binary();
@@ -83,6 +85,7 @@ sub lsof {
 }
 
 sub _find_binary {
+#    return if (!$ENV{PATH});
     my @path = split( ":", $ENV{PATH} );
     my $bin;
   PATHLOOP:
@@ -107,10 +110,10 @@ sub _construct_parameters {
     for my $arg ( keys %{$options} ) {
         if ( exists $translate{$arg} ) {
             push @cmd_line, $translate{$arg} if ( defined $translate{$arg} );
+        } else {
             push @cmd_line, $options->{$arg};
         }
     }
-
     return scalar @cmd_line ? @cmd_line : undef;
 }
 
@@ -156,7 +159,7 @@ Unix::Lsof - Wrapper to the Unix lsof utility
 
 =head1 VERSION
 
-This document describes Unix::Lsof version 0.0.1
+This document describes Unix::Lsof version 0.0.2
 
 
 =head1 SYNOPSIS
@@ -366,7 +369,7 @@ welcome.
 
 =head1 ACKNOWLEDGEMENTS
 
-A very heartfelt thanks to Vic Abel for writing C<lsof>, it has been invaluable
+A very heartfelt thanks to Vic Abell for writing C<lsof>, it has been invaluable
 to me over the years. Many thanks as always to http://www.perlmonks.org, the
 monks continue to amaze and enlighten me. A very special thanks to Damian
 Conway, who (amongst other things) recommends writing module documentation

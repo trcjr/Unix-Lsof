@@ -102,14 +102,14 @@ ok (@f = $lrs->get_arrayof_columns("p","file name","inode number"), "Got array o
 
 is ($inode, $f[2][$index], "correct inode in the same row as file name");
 
-ok (my %h = $lrs->get_hashof_columns("p","n","inode number"), "Got a hash of columns");
+ok (my %h = $lrs->get_hashof_columns("p","n","inode_number"), "Got a hash of columns");
 
 ($index) = grep { $h{"n"}[$_] eq "$dir/README" } 0..scalar(@{$h{"n"}})-1;
-is ($inode, $h{"inode number"}[$index], "correct inode in the same row as file name");
+is ($inode, $h{inode_number}[$index], "correct inode in the same row as file name");
 is ($$, $h{"p"}[$index], "Correct pid reported in the same line");
 
 for my $filter ( [ "number filter", {  i => $inode }],
-                 [ "regex filter", { "file name" => qr/R.ADME\z/ }],
+                 [ "regex filter", { file_name => qr/R.ADME\z/ }],
                  [ "string filter", { n => "$dir/README" } ],
                  [ "anonymous sub filter", { n => sub { $_[0] =~ m/R.+?DME/ &&
                                                             $_[0] =~ m{/RE} } } ],
