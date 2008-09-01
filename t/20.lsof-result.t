@@ -7,6 +7,7 @@ use strict;
 use warnings;
 
 my $hasnt_test_nowarnings;
+my $hasnt_test_warn;
 
 BEGIN {
     use Unix::Lsof;
@@ -15,13 +16,15 @@ BEGIN {
     if (!$SKIP) {
         plan skip_all => q{lsof not found in $PATH, please install it (see ftp://lsof.itap.purdue.edu/pub/tools/unix/lsof)};
     } else {
-        plan tests => 55;
+        plan tests => 62;
     }
 
     use_ok( 'Unix::Lsof' );
     use_ok( 'Unix::Lsof::Result' );
-    eval ' require Test::NoWarnings;';
+    eval 'require Test::NoWarnings;';
     $hasnt_test_nowarnings = 1 if $@;
+    eval 'use Test::Warn';
+    $hasnt_test_warn = 1 if $@;
 }
 
 can_ok ('Unix::Lsof::Result',qw(get_pids get_filenames get_arrayof_rows get_arrayof_columns get_hashof_columns get_hashof_rows get_values has_errors errors));
@@ -29,7 +32,6 @@ can_ok ('Unix::Lsof::Result',qw(get_pids get_filenames get_arrayof_rows get_arra
 my $lrs;
 ok (defined ($lrs = lsof("/doesnaexist")), "returns ok on calling in scalar context");
 isa_ok ($lrs,"Unix::Lsof::Result");
-ok (defined ($lrs = lsof({ file => "/doesnaexist"})), "returns if called with arguments in hashref");
 like ($lrs->errors(),qr/No such file or directory/,"Fails with missing file error message");
 ok ($lrs->has_errors(),"Reports errors via the has_errors method");
 ok (!$lrs,"object returns false");
@@ -55,12 +57,24 @@ MESSAGE_END
     ok ($lrs = lsof ("-w","README"), "returns true when file exists");
     ok (!$lrs->has_errors(),"Reports no errors when there aren't any");
 }
-    
+
 $lrs = undef;
 open (my $fh,"<","README");
 open (my $sfh,"<","README");
 
 ok ($lrs = lsof ("README"), "returns true if the file is open");
+SKIP: {
+
+    skip "Test::Warn not installed",5 if $hasnt_test_warn;
+    warning_like { $lrs->get_values({ "protocol name" => "TCP" },"T"); } qr{tcp/tpi info is not in the list of fields returned by lsof},"Warns on non-existant field name";
+    warnings_like { $lrs->get_values({ "file name" => [] }, "i") } [qr/Invalid filter specified for "file name"/,
+                                                                    qr/Invalid filter specified for "file name"/],
+                                                                        "Warns on invalid filter";
+    ok($lrs = lsof ("README",{ suppress_errors => 1 }),"returns true with options block");
+    ok($lrs->get_values({ "file name" => [] }, "i"), "suppressed invalid filter warning");
+    like ($lrs->errors(),qr/Invalid filter specified for "file name"/,"Invalid filter warning in error message");
+}
+
 is (($lrs->get_pids)[0],$$,"Correct process number reported");
 
 ok (defined ($lrs = lsof ("README","/doesnaexist")), "returns when called with an existing and non-existing file");
@@ -149,6 +163,18 @@ $lrs = lsof("-p",$$,"-n");
 my $prot = $lrs->get_hashof_rows( { "protocol name" => "TCP" }, "file type",  "protocol name", "n");
 is_deeply ($prot,{ "IPv4" => [ { "protocol name" => "TCP", "n" => "127.0.0.1:42424" }] },
                                "Returned correct filter result for field that only exists in some rows");
+my $tpi = $lrs->get_values({ "protocol name" => "TCP" },"T");
+is ($tpi->[0]->{"connection state"},"LISTEN","tcp/tpi info reported correctly");
+
+$lrs = lsof("-p",$$,"-n",{ tcp_tpi_parse => "part" });
+$tpi = $lrs->get_values({ "protocol name" => "TCP" },"T");
+is ($tpi->[0]->{"ST"},"LISTEN","tcp/tpi info correctly parsed into the short form");
+
+$lrs = lsof("-p",$$,"-n",{ tcp_tpi_parse => "array" });
+$tpi = $lrs->get_values({ "protocol name" => "TCP" },"T");
+my ($l) = grep { $_ eq "ST=LISTEN" } @{$tpi->[0]};
+is ($l,"ST=LISTEN","tcp/tpi info correctly parsed into the array");
+
 $sock->close();
 
 SKIP: {

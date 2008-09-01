@@ -1,6 +1,7 @@
 Build.PL
 Changes
 MANIFEST
+META.yml
 Makefile.PL
 README
 lib/Unix/Lsof.pm
@@ -9,4 +10,3 @@ t/10.procedural.t
 t/20.lsof-result.t
 t/pod-coverage.t
 t/pod.t
-META.yml                                 Module meta-data (added by MakeMaker)

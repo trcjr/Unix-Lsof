@@ -1,7 +1,7 @@
 package Unix::Lsof;
 
 use 5.008;
-use version; our $VERSION = qv('0.0.2');
+use version; our $VERSION = qv('0.0.5');
 
 use warnings;
 use strict;
@@ -42,45 +42,88 @@ our %op_field = (
     z => q(zone name)
 );
 
+our %tcptpi_field = (
+                     QR => q(read queue size),
+                     QS => q(send queue size),
+                     SO => q(socket options and values),
+                     SS => q(socket states),
+                     ST => q(connection state),
+                     TF => q(TCP flags and values),
+                     WR => q(window read size),
+                     WW => q(window write size),
+                     );
+
+my (%opt,$err);
+
 sub lsof {
     my @arg = @_;
 
-    # TODO: split if only one argument is passed, so that a shell line
-    # can be used as-is
-    my ( @params, $lsof_bin );
+    $err = undef;
+    _parse_opt (\@arg);
 
-    if ( ref $arg[0] eq "HASH" ) {
-        $lsof_bin = $arg[0]->{binary} ||
-            _find_binary() ||
-                die "Cannot find lsof program";
-        @params = _construct_parameters( $arg[0] );
-    } else {
-        $lsof_bin = _find_binary();
-        @params   = @arg;
+    # TODO: split arguments if only one argument is passed, so that a shell
+    # line can be used as-is
+
+    $opt{binary} ||= _find_binary() || _idie("Cannot find lsof binary");
+
+    if ( ! -e $opt{binary} ) {
+        _idie("Cannot find lsof binary: $!");
+    }
+    if ( !-x $opt{binary} || !-f $opt{binary} ) {
+        _idie("$opt{binary} is not an executable binary: $!");
     }
 
-    if ( !-e $lsof_bin ) {
-        die "Cannot find lsof program $lsof_bin: $!";
-    }
+    my ( @out);
 
-    if ( !-x $lsof_bin || !-f $lsof_bin ) {
-        die "$lsof_bin is not an executable binary: $!";
-    }
-
-    my ( @out, $err );
-
-    eval { run3( [ $lsof_bin, "-F0", @params ], \undef, \@out, \$err ); };
+    eval { run3( [ $opt{binary}, "-F0", @arg ], \undef, \@out, \$err ); };
 
     if ($@) {
         $err = $err ? $@ . $err : $@;
     }
 
-    my $parsed = parse_lsof_output( \@out );
+    my $parsed = _parse_lsof_output( \@out );
 
     if (wantarray) {
         return ( $parsed, $err );
     } else {
-        return Unix::Lsof::Result->_new( $parsed, $err, \@out );
+        return Unix::Lsof::Result->_new( $parsed, $err, \@out,\%opt );
+    }
+}
+
+sub _idie {
+    my $message = shift;
+    if ( $opt{suppress_errors} ) {
+        $err .= $message;
+    } else {
+        die $message;
+    }
+}
+
+sub _iwarn {
+    my $message = shift;
+    if ( $opt{suppress_errors} ) {
+        $err .= $message;
+    } else {
+        warn $message;
+    }
+}
+
+sub _parse_opt {
+    my $arg = shift;
+    # set options to defaults
+    %opt = (
+            binary          => undef,
+            tcp_tpi_parse   => "full",
+            suppress_errors => 0,
+        );
+
+    if ( ref $arg->[-1] eq ref {} ) {
+        my $manopt = pop @$arg;
+        for my $k (keys %opt) {
+            if (exists $manopt->{$k}) {
+                $opt{$k} = $manopt->{$k};
+            }
+        }
     }
 }
 
@@ -117,7 +160,7 @@ sub _construct_parameters {
     return scalar @cmd_line ? @cmd_line : undef;
 }
 
-sub parse_lsof_output {
+sub _parse_lsof_output {
     my $output = shift;
     my ( %result, $pid );
 
@@ -130,11 +173,18 @@ sub parse_lsof_output {
         } elsif ( $first =~ m/^f(.*)$/ ) {
             push @{ $result{$pid}{files} }, _parseelements( \@elements );
         } else {
-            die "Can't parse line $line";
+            _idie("Can't parse line $line");
         }
     }
 
     return \%result;
+}
+
+sub parse_lsof_output {
+    my @args = @_;
+    $err = undef;
+    _parse_opt(\@args);
+    return _parse_lsof_output(@args)
 }
 
 sub _parseelements {
@@ -144,7 +194,19 @@ sub _parseelements {
     while ( my $elem = shift @$elements ) {
         my ( $fident, $content ) = ( $elem =~ /^(.)(.*)$/ );
         next if !$fident;
-        $result{ $op_field{$fident} } = $content;
+        # Specialised handling of TCP/TPI info, since that field
+        # contains multiple pieces of data
+        if ($fident eq "T") {
+            if ($opt{tcp_tpi_parse} eq "array") {
+                push @{$result{ $op_field{$fident} } },$content;
+            } else {
+                my ($fi,$fc) = split(/=/,$content);
+                my $key = $opt{tcp_tpi_parse} eq "part" ? $fi : $tcptpi_field{$fi};
+                $result{ $op_field{$fident} }{ $key } = $fc;
+            }
+        } else {
+            $result{ $op_field{$fident} } = $content;
+        }
     }
     return \%result;
 }
@@ -159,7 +221,7 @@ Unix::Lsof - Wrapper to the Unix lsof utility
 
 =head1 VERSION
 
-This document describes Unix::Lsof version 0.0.2
+This document describes Unix::Lsof version 0.0.5
 
 
 =head1 SYNOPSIS
@@ -180,7 +242,10 @@ This document describes Unix::Lsof version 0.0.2
    my $lr = lsof ("-p",$$); # see Unix::Lsof::Result
    @filenames = $lrs->get_filenames();
    @inodes = $lrs->get_values("inode number");
-  
+
+   # With options
+   my $lr = lsof ("-p",$$,{ binary => "/opt/bin/lsof" });
+
 =head1 DESCRIPTION
 
 This module is a wrapper around the Unix lsof utility (written by Victor
@@ -198,7 +263,9 @@ called in scalar context, C<lsof> will return a C<Unix::Lsof::Result> object
 (see the documentation for that module for further details).
 
 On request, you can also export the subroutine C<parse_lsof_output> which will
-do what the name says and return the parsed output.
+do what the name says and return the parsed output. Both of these support a
+number of options, passed in as a hash reference as the last argument (see
+section "OPTIONS" below).
 
 =head1 INTERFACE
 
@@ -206,9 +273,13 @@ do what the name says and return the parsed output.
 
 =over 4
 
-=item lsof( [PARAMETERS] )
+=item lsof
 
-C<lsof> accepts parameters passed on to the lsof binary. These need to be in
+ lsof ();
+ lsof ( @lsof_arguments );
+ lsof ( @lsof_arguments, \%options );
+
+C<lsof> accepts arguments passed on to the lsof binary. These need to be in
 list form, so you need to do
 
     $r = lsof("-p",$pid,"-a","+D","/tmp");
@@ -300,11 +371,67 @@ File field names are:
     "user id"
     "zone name"
 
+Special mention needs to be made of the field "tcp/tpi info", since that will
+contain a list of information. Therefore, the value for this field is itself a
+hash reference. The keys of this hash are the long names of the information, as
+given in the lsof man page, the information names are:
+
+    "read queue size"
+    "send queue size"
+    "socket options and values"
+    "socket states"
+    "connection state"
+    "TCP flags and values"
+    "window read size"
+    "window write size"
+
+Note that not all of this information is available on every dialect, see the lsof
+man page for more.
+
 =item parse_lsof_output ( <STRING> )
 
 This function takes the raw output as obtained from the lsof binary (with the
 -F0 option) and parses it into the data structure explained above. It does
 B<not> understand the lsof STDERR output.
+
+=item OPTIONS
+
+You can (optionally) pass in a hash reference as the last argument to either
+C<lsof> or C<parse_lsof_output>. This reference can contain the following
+options:
+
+=back
+
+=over 8
+
+=item binary
+
+Contains the path of the lsof binary. Use this if lsof is not in your $ENV{PATH}.
+
+=item suppress_errors
+
+Default false. If set to 1, Unix::Lsof subroutines will not emit any warning
+messages and will not die on a fatal error. Diagnostics suppressed in this way
+can be found in $err (and $UNIX::Lsof::Result->err()).
+
+=item tcp_tpi_parse
+
+See the above section on "tcp/tpi info". Possible values:
+
+"full"
+
+Default. Parses out the tcptpi information and uses the long names as hash keys.
+
+"part"
+
+Also parses out the information, but uses the short names (e.g. QS for "send
+queue size") as keys.
+
+"array"
+
+Returns an array reference instead of a hash, each element of the array
+contains an unparsed TCP/TPI information (e.g. "QS=0").
+
 
 =back
 
