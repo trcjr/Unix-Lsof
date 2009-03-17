@@ -2,7 +2,7 @@ use strict;
 use warnings;
 use Module::Build;
 
-if ($^O =~ m/^(?:mswin32|dos|macos|os2|cygwin|v[mo]s|riscos|amigaos|beos|mpeix)$/) {
+if ($^O =~ m/^(?:mswin32|dos|macos|os2|cygwin|v[mo]s|riscos|amigaos|beos|mpeix)$/i) {
     die "NA: OS unsupported , lsof is not available for OS $^O, no point installing this module\n";
 }
 

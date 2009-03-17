@@ -1,7 +1,7 @@
 package Unix::Lsof;
 
 use 5.008;
-use version; our $VERSION = qv('0.0.5');
+use version; our $VERSION = qv('0.0.6');
 
 use warnings;
 use strict;
@@ -39,7 +39,9 @@ our %op_field = (
     t => q(file type),
     T => q(tcp/tpi info),
     u => q(user id),
-    z => q(zone name)
+    z => q(zone name),
+    Z => q(selinux security context),
+                 
 );
 
 our %tcptpi_field = (
@@ -162,18 +164,38 @@ sub _construct_parameters {
 
 sub _parse_lsof_output {
     my $output = shift;
-    my ( %result, $pid );
+    my ( %result, $pid, $previous );
 
     for my $line (@$output) {
         my @elements = split( "\0", $line );
-        my $first = $elements[0];
-        if ( $first =~ m/^p(\d+)$/ ) {
-            $pid = $1;
-            $result{$pid} = _parseelements( \@elements );
-        } elsif ( $first =~ m/^f(.*)$/ ) {
-            push @{ $result{$pid}{files} }, _parseelements( \@elements );
-        } else {
+        my ($ident,$content) = ( $elements[0] =~ m/^(\w)(.*)$/ );
+        if ( !$ident ) {
             _idie("Can't parse line $line");
+        } elsif ($ident eq "p") {
+            $pid = $content;
+            $result{$pid} = _parseelements( \@elements );
+            $previous = $ident;
+        } elsif ( $ident eq "f" ) {
+            push @{ $result{$pid}{files} }, _parseelements( \@elements );
+            $previous = $ident;
+        } else {
+            if ( exists $op_field{ $ident } ) {
+                # Probably an error message containing a NL character was returned
+                # warn about this problem and add to previous field results
+                _iwarn("lsof result line starts with an invalid field identifier $ident");
+                if ( $previous eq "p" ) {
+                    _iwarn( "Adding results of this line to process set for PID $pid");
+                    %{$result{$pid}} = ( %{$result{$pid}}, %{ _parseelements( \@elements ) } );
+                } elsif ( $previous eq "f" ) {
+                    my $lastline = pop @{ $result{$pid}{files} };
+                    _iwarn( "Adding results of this line to file set line" );
+                    push @{ $result{$pid}{files} }, { %$lastline, %{ _parseelements( \@elements ) } };
+                } else {
+                    _idie (qq(Previous record neither a process nor file set, identifier was "$previous"));
+                }
+            } else {
+                _idie("Can't parse line $line");
+            }
         }
     }
 
@@ -221,7 +243,7 @@ Unix::Lsof - Wrapper to the Unix lsof utility
 
 =head1 VERSION
 
-This document describes Unix::Lsof version 0.0.5
+This document describes Unix::Lsof version 0.0.6
 
 
 =head1 SYNOPSIS
@@ -370,6 +392,7 @@ File field names are:
     "tcp/tpi info"
     "user id"
     "zone name"
+    "selinux security context"
 
 Special mention needs to be made of the field "tcp/tpi info", since that will
 contain a list of information. Therefore, the value for this field is itself a
@@ -390,9 +413,11 @@ man page for more.
 
 =item parse_lsof_output ( <STRING> )
 
-This function takes the raw output as obtained from the lsof binary (with the
--F0 option) and parses it into the data structure explained above. It does
-B<not> understand the lsof STDERR output.
+This function takes the output as obtained from the lsof binary (with the
+-F0 option) and parses it into the data structure explained above. You need to
+pass the lsof STDOUT output in as an array reference, with one line of output
+per array element. C<parse_lsof_output> does B<not> understand the lsof STDERR
+output.
 
 =item OPTIONS
 
@@ -450,6 +475,32 @@ Encountered a line of lsof output which could not be properly parsed. If you
 get this from calling C<lsof()> it is almost certainly a bug, please let me know
 so I can fix it. If you encountered it from running C<parse_lsof_output>, please
 make sure that the output was obtained from running lsof with the -F0 option.
+
+=item C<< lsof result line starts with an invalid field identifier %s >>
+
+This warning probably shows a bug in your lsof installation, since it reports
+a malformed lsof output. To my knowledge this has so far only been experienced
+on CentOS 5.2 with the RedHat build of lsof 4.78, if you experience it with any
+other combination of OS or lsof version I'd appreciate if you could tell me about
+it. C<Unix::Lsof> tries to work around this bug but it is possible that the
+results it returns may be wrong.
+
+=item C<< Adding results of this line to process set for PID %s >>
+
+Appears in conjunction with the "invalid field identifier" warning
+and show that the incorrect output was encountered in a process set.
+
+=item C<< Adding results of this line to file set line >>
+
+Appears in conjunction with the "invalid field identifier" warning
+and show that the incorrect output was encountered in a field set.
+
+=item C<< Previous record neither a process nor file set, identifier was "%s" >>
+
+Appears in conjunction with the "invalid field identifier" warning, something else
+has gone wrong and we were unable to work around it. Please send a bug report to
+C<bug-unix-lsof@rt.cpan.org>.
+
 
 =back
 
@@ -513,7 +564,7 @@ Marc Beyer  C<< <japh@tirwhan.org> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright (c) 2008, Marc Beyer C<< <japh@tirwhan.org> >>. All rights reserved.
+Copyright (c) 2009, Marc Beyer C<< <japh@tirwhan.org> >>. All rights reserved.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself. See L<perlartistic>.

@@ -1,5 +1,9 @@
 Revision history for Unix-Lsof
 
+0.0.5   Tue 03 17 11:28:00 2009
+        - Fixed RT bugs 41016 and 43394 by working around broken lsof output
+        - Documentation fixes
+
 0.0.5   Mon 09 01 17:55:00 2008
         - Fixed test failures
 
