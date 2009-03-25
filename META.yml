@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Unix-Lsof
-version:             0.0.6
+version:             0.0.7
 abstract:            Wrapper to the Unix lsof utility
 license:             ~
 author:              

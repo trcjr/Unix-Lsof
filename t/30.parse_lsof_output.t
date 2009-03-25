@@ -14,7 +14,7 @@ BEGIN {
     if (!$SKIP) {
         plan skip_all => q{lsof not found in $PATH, please install it (see ftp://lsof.itap.purdue.edu/pub/tools/unix/lsof)};
     } else {
-        plan tests => 8;
+        plan tests => 10;
     }
     use_ok( 'Unix::Lsof' );
     eval ' require Test::NoWarnings;';
@@ -35,7 +35,7 @@ ok ( $lrs = parse_lsof_output(["p1111\0g22222\0R3333\0carthur\0u42\0Lzaphod\0","
 ok (exists $lrs->{1111},"Correct process number reported");
 
 SKIP: {
-    skip "Test::Warn not installed",4 if $hasnt_test_warn;
+    skip "Test::Warn not installed",6 if $hasnt_test_warn;
 
     # These tests are for the output which caused RT bug numbers 41016 and 43394
     warnings_like { $lrs = parse_lsof_output(["p1111\0Zerror message\0",
@@ -50,6 +50,16 @@ SKIP: {
 
     warnings_like { $lrs = parse_lsof_output(["p1111\0Zerror message\0g22222\0R3333\0cford\0u42\0Lzaphod\0",
                                               "f8\0ar\0l \0nnewline\0",
+                                              "tREG\0i4242",
+                                          ]) } [
+                                                qr/lsof result line starts with an invalid field identifier t/,
+                                                qr/Adding results of this line to file set line/,
+                                            ],
+                                                "Survives with malformed result in file set";
+
+    is ($lrs->{1111}{files}[0]{"inode number"},4242,"Correct inode reported");
+    warnings_like { $lrs = parse_lsof_output(["p1111\0Zerror message\0g22222\0R3333\0cford\0u42\0Lzaphod",
+                                              "\0f8\0ar\0l \0nnewline\0",
                                               "tREG\0i4242",
                                           ]) } [
                                                 qr/lsof result line starts with an invalid field identifier t/,

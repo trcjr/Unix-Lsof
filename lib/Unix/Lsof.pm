@@ -1,7 +1,7 @@
 package Unix::Lsof;
 
 use 5.008;
-use version; our $VERSION = qv('0.0.6');
+use version; our $VERSION = qv('0.0.7');
 
 use warnings;
 use strict;
@@ -167,10 +167,11 @@ sub _parse_lsof_output {
     my ( %result, $pid, $previous );
 
     for my $line (@$output) {
+        $line =~ s/^[\s\0]*//;
         my @elements = split( "\0", $line );
         my ($ident,$content) = ( $elements[0] =~ m/^(\w)(.*)$/ );
         if ( !$ident ) {
-            _idie("Can't parse line $line");
+            _idie("Can't parse line $line, identifier missing");
         } elsif ($ident eq "p") {
             $pid = $content;
             $result{$pid} = _parseelements( \@elements );
@@ -194,7 +195,7 @@ sub _parse_lsof_output {
                     _idie (qq(Previous record neither a process nor file set, identifier was "$previous"));
                 }
             } else {
-                _idie("Can't parse line $line");
+                _idie("Can't parse line $line, operator field $ident is not valid");
             }
         }
     }
@@ -243,7 +244,7 @@ Unix::Lsof - Wrapper to the Unix lsof utility
 
 =head1 VERSION
 
-This document describes Unix::Lsof version 0.0.6
+This document describes Unix::Lsof version 0.0.7
 
 
 =head1 SYNOPSIS
