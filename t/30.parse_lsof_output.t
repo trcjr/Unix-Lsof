@@ -34,41 +34,22 @@ ok ( $lrs = parse_lsof_output(["p1111\0g22222\0R3333\0carthur\0u42\0Lzaphod\0","
 
 ok (exists $lrs->{1111},"Correct process number reported");
 
-SKIP: {
-    skip "Test::Warn not installed",6 if $hasnt_test_warn;
+ok ( $lrs = parse_lsof_output("p1111\0g22222\0R3333\0carthur\0u42\0Lzaphod\0\012f8\0ar\0l \0tREG\0"),
+     "Successfully parsed known good lsof output in a string");
 
-    # These tests are for the output which caused RT bug numbers 41016 and 43394
-    warnings_like { $lrs = parse_lsof_output(["p1111\0Zerror message\0",
-                                         "g22222\0R3333\0cford\0u42\0Lzaphod\0",
-                                         "f8\0ar\0l \0tREG\0"]) } [
-                                                                   qr/lsof result line starts with an invalid field identifier g/,
-                                                                   qr/Adding results of this line to process set for PID 1111/,
-                                                                   ],
-                                                                       "Throws correct warnings with malformed result in process set";
 
-    is ($lrs->{1111}->{"command name"},"ford","Correct command name from second line reported");
+ok (exists $lrs->{1111},"Correct process number reported");
 
-    warnings_like { $lrs = parse_lsof_output(["p1111\0Zerror message\0g22222\0R3333\0cford\0u42\0Lzaphod\0",
-                                              "f8\0ar\0l \0nnewline\0",
-                                              "tREG\0i4242",
-                                          ]) } [
-                                                qr/lsof result line starts with an invalid field identifier t/,
-                                                qr/Adding results of this line to file set line/,
-                                            ],
-                                                "Survives with malformed result in file set";
 
-    is ($lrs->{1111}{files}[0]{"inode number"},4242,"Correct inode reported");
-    warnings_like { $lrs = parse_lsof_output(["p1111\0Zerror message\0g22222\0R3333\0cford\0u42\0Lzaphod",
-                                              "\0f8\0ar\0l \0nnewline\0",
-                                              "tREG\0i4242",
-                                          ]) } [
-                                                qr/lsof result line starts with an invalid field identifier t/,
-                                                qr/Adding results of this line to file set line/,
-                                            ],
-                                                "Survives with malformed result in file set";
+# These tests are for the output which caused RT bug numbers 41016 and 43394
+ok ( $lrs = parse_lsof_output("p1111\0Zerror message\012g22222\0R3333\0cford\0u42\0Lzaphod\0\012f8\0ar\0l \0tREG\0"),
+     "Recognizes line breaks without NUL terminator");
 
-    is ($lrs->{1111}{files}[0]{"inode number"},4242,"Correct inode reported");
-}
+is ($lrs->{1111}->{"command name"},"ford","Correct command name from second line reported");
+
+ok ( $lrs = parse_lsof_output("p1111\0Zerror message\0g22222\0R3333\0cford\0u42\0Lzaphod\0\012f8\0ar\0l \0nnewline\0tREG\0i4242"),
+     "Survives with malformed result in file set");
+is ($lrs->{1111}{files}[0]{"inode number"},4242,"Correct inode reported");
 
 SKIP: {
     skip "Test::NoWarnings not installed", 1 if $hasnt_test_nowarnings;

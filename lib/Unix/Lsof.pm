@@ -1,7 +1,7 @@
 package Unix::Lsof;
 
 use 5.008;
-use version; our $VERSION = qv('0.0.7');
+use version; our $VERSION = qv('0.0.9');
 
 use warnings;
 use strict;
@@ -75,20 +75,20 @@ sub lsof {
         _idie("$opt{binary} is not an executable binary: $!");
     }
 
-    my ( @out);
+    my $out="";
 
-    eval { run3( [ $opt{binary}, "-F0", @arg ], \undef, \@out, \$err ); };
+    eval { run3( [ $opt{binary}, "-F0", @arg ], \undef, \$out, \$err ); };
 
     if ($@) {
         $err = $err ? $@ . $err : $@;
     }
 
-    my $parsed = _parse_lsof_output( \@out );
+    my $parsed = _parse_lsof_output( $out );
 
     if (wantarray) {
         return ( $parsed, $err );
     } else {
-        return Unix::Lsof::Result->_new( $parsed, $err, \@out,\%opt );
+        return Unix::Lsof::Result->_new( $parsed, $err, $out,\%opt );
     }
 }
 
@@ -163,10 +163,10 @@ sub _construct_parameters {
 }
 
 sub _parse_lsof_output {
-    my $output = shift;
+    my $out = shift;
     my ( %result, $pid, $previous );
-
-    for my $line (@$output) {
+    my @output = split (/\000\012/, $out);
+    for my $line (@output) {
         $line =~ s/^[\s\0]*//;
         my @elements = split( "\0", $line );
         my ($ident,$content) = ( $elements[0] =~ m/^(\w)(.*)$/ );
@@ -180,24 +180,9 @@ sub _parse_lsof_output {
             push @{ $result{$pid}{files} }, _parseelements( \@elements );
             $previous = $ident;
         } else {
-            if ( exists $op_field{ $ident } ) {
-                # Probably an error message containing a NL character was returned
-                # warn about this problem and add to previous field results
-                _iwarn("lsof result line starts with an invalid field identifier $ident");
-                if ( $previous eq "p" ) {
-                    _iwarn( "Adding results of this line to process set for PID $pid");
-                    %{$result{$pid}} = ( %{$result{$pid}}, %{ _parseelements( \@elements ) } );
-                } elsif ( $previous eq "f" ) {
-                    my $lastline = pop @{ $result{$pid}{files} };
-                    _iwarn( "Adding results of this line to file set line" );
-                    push @{ $result{$pid}{files} }, { %$lastline, %{ _parseelements( \@elements ) } };
-                } else {
-                    _idie (qq(Previous record neither a process nor file set, identifier was "$previous"));
-                }
-            } else {
-                _idie("Can't parse line $line, operator field $ident is not valid");
-            }
+            _idie("Can't parse line $line, operator field $ident is not valid");
         }
+
     }
 
     return \%result;
@@ -206,8 +191,12 @@ sub _parse_lsof_output {
 sub parse_lsof_output {
     my @args = @_;
     $err = undef;
-    _parse_opt(\@args);
-    return _parse_lsof_output(@args)
+    if (ref($args[0]) eq ref([])) {
+        my $str = join("\000\012",@{$args[0]});
+        return _parse_lsof_output($str);
+    } else {
+        return _parse_lsof_output($args[0]);
+    }
 }
 
 sub _parseelements {
@@ -244,7 +233,7 @@ Unix::Lsof - Wrapper to the Unix lsof utility
 
 =head1 VERSION
 
-This document describes Unix::Lsof version 0.0.7
+This document describes Unix::Lsof version 0.0.9
 
 
 =head1 SYNOPSIS
@@ -416,9 +405,10 @@ man page for more.
 
 This function takes the output as obtained from the lsof binary (with the
 -F0 option) and parses it into the data structure explained above. You need to
-pass the lsof STDOUT output in as an array reference, with one line of output
-per array element. C<parse_lsof_output> does B<not> understand the lsof STDERR
-output.
+pass the lsof STDOUT output in as a single string. Previous behaviour (passing
+the output as an array reference with one line of output per array element) is
+deprecated as of Unix::Lsof version 0.0.8 and may not work in future releases.
+C<parse_lsof_output> does B<not> understand the lsof STDERR output.
 
 =item OPTIONS
 
@@ -476,15 +466,6 @@ Encountered a line of lsof output which could not be properly parsed. If you
 get this from calling C<lsof()> it is almost certainly a bug, please let me know
 so I can fix it. If you encountered it from running C<parse_lsof_output>, please
 make sure that the output was obtained from running lsof with the -F0 option.
-
-=item C<< lsof result line starts with an invalid field identifier %s >>
-
-This warning probably shows a bug in your lsof installation, since it reports
-a malformed lsof output. To my knowledge this has so far only been experienced
-on CentOS 5.2 with the RedHat build of lsof 4.78, if you experience it with any
-other combination of OS or lsof version I'd appreciate if you could tell me about
-it. C<Unix::Lsof> tries to work around this bug but it is possible that the
-results it returns may be wrong.
 
 =item C<< Adding results of this line to process set for PID %s >>
 

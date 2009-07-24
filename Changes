@@ -1,5 +1,12 @@
 Revision history for Unix-Lsof
 
+0.0.9   Fri 07 24 15:29:00 2009
+        - Fixed failing tests ID 4752286, 4745065, 4740865 (removed skip for Test::Warn on a test file)
+
+0.0.8   Wed 07 22 11:49:00 2009
+        - Fixed RT bug 46009 by removing workaround introduced in 0.0.6 and replacing it with correct parsing
+        - Changed parse_lsof_output to accept raw output in a scalar  instead of pre-split array reference
+
 0.0.7   Wed 03 25 17:23:00 2009
         - Additional test and fix for 43394
 

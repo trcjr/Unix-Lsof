@@ -1,7 +1,7 @@
 package Unix::Lsof::Result;
 
 use 5.008;
-use version; our $VERSION = qv('0.0.7');
+use version; our $VERSION = qv('0.0.9');
 
 use warnings;
 use strict;
@@ -294,7 +294,7 @@ Unix::Lsof::Result - Perlish interface to lsof output
 
 =head1 VERSION
 
-This document describes Unix::Lsof::Result version 0.0.7
+This document describes Unix::Lsof::Result version 0.0.9
 
 
 =head1 SYNOPSIS
